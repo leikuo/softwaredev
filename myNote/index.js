@@ -2,6 +2,8 @@
 var path = require('path');
 var bodyParser = require('body-parser');
 var crypto = require('crypto');
+var session = require('express-session');
+
 
 //引入mongoose
 var mongoose = require('mongoose');
@@ -12,7 +14,7 @@ var models = require('./models/models');
 var User = models.User;
 
 //使用mongoose连接服务
-mongoose.connect('mongodb://123.207.167.38:27017/notes');
+mongoose.connect('mongodb://localhost:27017/notes');
 mongoose.connection.on('error', console.error.bind(console, '连接数据库失效'));
 
 var app = express();
@@ -28,8 +30,19 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use(bodyParser.json());
 app.use(bodyParser.urlencoded({extended: true}));
 
+//建立session模型
+app.use(session({
+	secret: '1234',
+	name: 'mynote',
+	cookie: {maxAge: 1000 * 60 * 20}, 		//设置session的保存时间为20分钟
+	resave: false,
+	saveUninitialized: true
+}));
+
+
 app.get('/', function(req, res){
 	res.render('index', {
+		user: req.session.user, //在跳转页面之前，将user信息数据传入EJS模版
 		title: '首页'
 	});
 });
@@ -38,46 +51,20 @@ app.get('/', function(req, res){
 app.get('/register', function(req, res){
 	console.log('注册！');
 	res.render('register', {
+		user: req.session.user,
 		title: '注册'
 	});
 });
 
-app.get('/login', function(req, res){
-	console.log('登录！');
-	res.render('login', {
-		title:'登录'
-	});
-});
-
-app.get('/quit', function(req, res){
-	console.log('退出！');
-	return res.redirect('/login');
-});
-
-app.get('/post', function(req, res){
-	console.log('发布！');
-	res.render('post', {
-		title: '发布'
-	});
-});
-
-app.get('/detail/', function(req, res){
-	console.log('查看笔记！');
-	res.render('detail', {
-		title:'查看笔记'
-	});
-});
-
-
 //post请求
-app.get('/register', function(req, res){
+app.post('/register', function(req, res){
 	//req.body可以获取到表单的每项数据
 	var username = req.body.username,
 		password = req.body.password,
 		passwordRepeat = req.body.passwordRepeat;
 		
 	//检查输入的用户名是否为空，使用trim去掉两端空格
-	if (username.trim().length() == 0){
+	if (username.trim().length == 0){
 		console.log('密码不能为空！');
 		return res.redirect('/register');
 	}
@@ -127,6 +114,69 @@ app.get('/register', function(req, res){
 			
 	});
 });
+
+
+
+app.get('/login', function(req, res){
+	console.log('登录！');
+	res.render('login', {
+		title:'登录'
+	});
+});
+
+app.post('/login', function(req,res){
+	var username = req.body.username,password = req.body.password;
+	
+	User.findOne({username:username}, function(err,user){
+		if(err) {
+			console.log(err);
+			return res.redirect('/login');
+		}
+		if(!user){
+			console.log('用户不存在！');
+			return res.redirect('/login');
+		}
+		//对密码进行md5加密
+		var md5 = crypto.createHash('md5'),
+			md5password = md5.update(password).digest('hex');
+		
+		if(user.password !== md5password){
+			console.log('密码错误！');
+			return res.redirect('/login');
+		}
+	
+		console.log('登录成功！');
+		user.password = null;
+		delete user.password;
+		req.session.user = user;
+		return res.redirect('/');
+	});
+});
+
+
+
+app.get('/quit', function(req, res){
+	console.log('退出！');
+	return res.redirect('/login');
+});
+
+app.get('/post', function(req, res){
+	console.log('发布！');
+	res.render('post', {
+		title: '发布'
+	});
+});
+
+app.get('/detail/', function(req, res){
+	console.log('查看笔记！');
+	res.render('detail', {
+		title:'查看笔记'
+	});
+});
+
+
+
+
 
 
 //监听3000端口
